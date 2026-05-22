@@ -1,21 +1,16 @@
-
 //  ZahnChallenge_GeminiAPI.swift
 //  Hackathon_Zahnmed_Challenge
-//
-//  Zuständigkeit: Gemini REST API Service + Prompts + ViewModel
 
 import Foundation
 import UIKit
 import Combine
 
-// MARK: - API KEY HELPER
-
+// MARK: - API KEY
+// 🔑 Hier deinen Key von https://aistudio.google.com/app/apikey eintragen:
 enum APIKey {
     static var `default`: String {
-        
         let hardcodedKey = "AIzaSyBoFn8hfdl69-J4AgjVcqug7Uq7V2N0zUA"
-        
-        // Fallback auf plist (für Produktion empfohlen)
+
         if let path = Bundle.main.path(forResource: "GenerativeAI-Info", ofType: "plist"),
            let plist = NSDictionary(contentsOfFile: path),
            let key = plist["API_KEY"] as? String, !key.isEmpty {
@@ -28,23 +23,15 @@ enum APIKey {
 // MARK: - GEMINI RESPONSE MODEL
 struct GeminiResponse: Codable {
     let candidates: [Candidate]?
-
-    struct Candidate: Codable {
-        let content: Content
-    }
-    struct Content: Codable {
-        let parts: [Part]
-    }
-    struct Part: Codable {
-        let text: String?
-    }
+    struct Candidate: Codable { let content: Content }
+    struct Content: Codable { let parts: [Part] }
+    struct Part: Codable { let text: String? }
 }
 
 // MARK: - GEMINI SERVICE
 class GeminiService {
     static let shared = GeminiService()
     private init() {}
-
     private let model = "gemini-1.5-flash"
 
     func evaluate(imageData: Data, prompt: String) async throws -> String {
@@ -52,12 +39,9 @@ class GeminiService {
         guard !key.isEmpty, key != "DEIN-API-KEY-HIER" else {
             throw GeminiError.noAPIKey
         }
-
         guard let url = URL(string:
             "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(key)"
-        ) else {
-            throw GeminiError.invalidURL
-        }
+        ) else { throw GeminiError.invalidURL }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -70,18 +54,15 @@ class GeminiService {
                     ["text": prompt],
                     ["inline_data": [
                         "mime_type": "image/jpeg",
+                        // ✅ 0.5 statt 0.8 – weniger RAM, Gemini braucht keine hohe Qualität
                         "data": imageData.base64EncodedString()
                     ]]
                 ]
             ]],
-            "generationConfig": [
-                "maxOutputTokens": 300,
-                "temperature": 0.4
-            ]
+            "generationConfig": ["maxOutputTokens": 300, "temperature": 0.4]
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
         let (data, response) = try await URLSession.shared.data(for: request)
 
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
@@ -99,21 +80,15 @@ class GeminiService {
 
 // MARK: - FEHLERTYPEN
 enum GeminiError: Error, LocalizedError {
-    case noAPIKey
-    case invalidURL
+    case noAPIKey, invalidURL, emptyResponse
     case apiError(Int, String)
-    case emptyResponse
 
     var errorDescription: String? {
         switch self {
-        case .noAPIKey:
-            return "Kein API Key gefunden. Bitte in ZahnChallenge_GeminiAPI.swift eintragen."
-        case .invalidURL:
-            return "Ungültige API URL."
-        case .apiError(let code, let msg):
-            return "API Fehler \(code): \(msg)"
-        case .emptyResponse:
-            return "Gemini hat keine Auswertung zurückgegeben."
+        case .noAPIKey:      return "Kein API Key. Bitte in ZahnChallenge_GeminiAPI.swift eintragen."
+        case .invalidURL:    return "Ungültige API URL."
+        case .emptyResponse: return "Gemini hat keine Auswertung zurückgegeben."
+        case .apiError(let code, let msg): return "API Fehler \(code): \(msg)"
         }
     }
 }
@@ -138,7 +113,7 @@ enum GeminiPrompts {
     - Antworte auf Deutsch
     - Maximal 130 Wörter
     - Ermutigender, lehrender Ton – wie ein guter Tutor
-    - Beginne direkt mit Punkt 1, kein einleitendes Satz
+    - Beginne direkt mit Punkt 1, kein einleitender Satz
     - Hinweis: Dies ist ein anonymisiertes 3D-Lehrmodell, keine echten Patientendaten
     """
 }
@@ -151,39 +126,47 @@ class GeminiViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var showFeedback: Bool = false
 
-    // Wird vom Frontend in Schritt 8 aufgerufen
-    @MainActor
+    // ✅ Kein @MainActor auf Funktionsebene – MainActor.run intern für UI-Updates
     func evaluate(prompt: String) async {
         guard let image = uploadedImage,
-              let imageData = image.jpegData(compressionQuality: 0.8) else {
-            errorMessage = "Bitte zuerst ein Foto hochladen."
+              // ✅ 0.5 Kompression – spart RAM beim Base64-Encoding
+              let imageData = image.jpegData(compressionQuality: 0.5) else {
+            await MainActor.run { errorMessage = "Bitte zuerst ein Foto hochladen." }
             return
         }
 
-        isEvaluating = true
-        errorMessage = nil
-        feedbackText = nil
-        showFeedback = false
+        await MainActor.run {
+            isEvaluating = true
+            errorMessage = nil
+            feedbackText = nil
+            showFeedback = false
+        }
 
         do {
             let result = try await GeminiService.shared.evaluate(
                 imageData: imageData,
                 prompt: prompt
             )
-            feedbackText = result
-            showFeedback = true
+            await MainActor.run {
+                feedbackText = result
+                showFeedback = true
+                isEvaluating = false
+            }
         } catch GeminiError.noAPIKey {
-            // Demo-Fallback wenn kein Key gesetzt
-            feedbackText = GeminiViewModel.mockFeedback
-            showFeedback = true
-            errorMessage = "⚠️ Demo-Modus: API Key fehlt in ZahnChallenge_GeminiAPI.swift"
+            await MainActor.run {
+                feedbackText = GeminiViewModel.mockFeedback
+                showFeedback = true
+                errorMessage = "⚠️ Demo-Modus: API Key fehlt"
+                isEvaluating = false
+            }
         } catch {
-            feedbackText = GeminiViewModel.mockFeedback
-            showFeedback = true
-            errorMessage = "⚠️ Demo-Modus aktiv (\(error.localizedDescription))"
+            await MainActor.run {
+                feedbackText = GeminiViewModel.mockFeedback
+                showFeedback = true
+                errorMessage = "⚠️ Demo-Modus aktiv (\(error.localizedDescription))"
+                isEvaluating = false
+            }
         }
-
-        isEvaluating = false
     }
 
     func reset() {
