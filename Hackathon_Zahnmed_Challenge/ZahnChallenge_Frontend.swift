@@ -4,16 +4,13 @@ import Combine
 
 // Note: Color extension and AppState are defined in ZahnChallenge_Backend.swift
 
-// MARK: - PERSISTENT BOTTOM BAR (Task 4)
+// MARK: - PERSISTENT BOTTOM BAR
 struct PersistentBottomBar: View {
     var body: some View {
         HStack(spacing: 0) {
-            // Startseite – navigiert zurück zur Root (per dismiss-stack)
-            // Da wir in einem NavigationStack sind, nutzen wir einen einfachen
-            // Placeholder-Button; echte Pop-to-Root-Navigation via Environment.
-            PersistentBarItem(icon: "house.fill", label: "Startseite", active: false, action: {})
-            PersistentBarItem(icon: "trophy.fill",      label: "Ranking",    active: false, action: {})
-            PersistentBarItem(icon: "bubble.left.fill", label: "Chat",       active: false, action: {})
+            PersistentBarItem(icon: "house.fill",        label: "Startseite", active: false, action: {})
+            PersistentBarItem(icon: "trophy.fill",       label: "Ranking",    active: false, action: {})
+            PersistentBarItem(icon: "bubble.left.fill",  label: "Chat",       active: false, action: {})
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 10)
@@ -42,7 +39,6 @@ private struct PersistentBarItem: View {
     }
 }
 
-// ViewModifier – auf jeden Quiz-Screen anwenden
 extension View {
     func withPersistentBottomBar() -> some View {
         self.safeAreaInset(edge: .bottom, spacing: 0) {
@@ -301,7 +297,7 @@ struct CaseCardView: View {
     }
 }
 
-// MARK: - BOTTOM NAV (nur HomeView)
+// MARK: - BOTTOM NAV
 struct BottomNavView: View {
     @ObservedObject var state: AppState
 
@@ -497,7 +493,6 @@ struct CaseDetailView: View {
                     .foregroundColor(Color(hex: "084B83")).padding(.horizontal, 16)
                 }
 
-                // Fallverlauf – 8 Schritte (Task 1)
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Fallverlauf")
                         .font(.system(size: 14, weight: .semibold))
@@ -547,7 +542,7 @@ struct CaseDetailView: View {
 // MARK: - REUSABLE: Progress Bar
 struct ProgressBarView: View {
     let step: Int
-    let total: Int   // immer 8
+    let total: Int
     let score: Int
 
     var body: some View {
@@ -1515,7 +1510,7 @@ private struct SortCardView: View {
     }
 }
 
-// MARK: - STEP 7: MCQ + Step7NavBar
+// MARK: - STEP 7: MCQ
 struct Step7MCQView: View {
     @State private var selected: Int? = nil
     @State private var submitted = false
@@ -1633,18 +1628,20 @@ private struct MCQOptionRow: View {
     }
 }
 
-// MARK: - STEP 8: Foto-Upload (Task 1 + 2)
+// MARK: - STEP 8: Foto-Upload
 struct Step8PhotoUploadView: View {
     @State private var images: [UIImage] = []
     @State private var showPicker = false
     @State private var isPulsing = false
     let maxPhotos = 5
 
+    @StateObject private var geminiVM = GeminiViewModel()
+    @State private var navigateToCompleted = false
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Task 1: Schritt 8 von 8, volle Progress Bar
                     VStack(spacing: 6) {
                         HStack {
                             Text("Schritt 8 von 8")
@@ -1712,22 +1709,36 @@ struct Step8PhotoUploadView: View {
                 .padding(.top, 20)
             }
 
-            // Task 2: Button-Label + Navigation zu CaseCompletedView (kein API-Call)
             VStack(spacing: 0) {
                 Divider()
                 VStack(spacing: 10) {
-                    NavigationLink(destination: CaseCompletedView()) {
+                    Button(action: {
+                        guard let firstImage = images.first else { return }
+                        geminiVM.uploadedImage = firstImage
+                        Task {
+                            await geminiVM.evaluate(prompt: GeminiPrompts.fall1_upload)
+                            await MainActor.run { navigateToCompleted = true }
+                        }
+                    }) {
                         HStack(spacing: 8) {
-                            Text("Zur Kontrolle an KI abgeben")
-                                .font(.system(size: 16, weight: .bold))
-                            Image(systemName: "brain.head.profile")
+                            if geminiVM.isEvaluating {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.85)
+                                Text("KI wertet aus…")
+                                    .font(.system(size: 16, weight: .bold))
+                            } else {
+                                Text("Zur Kontrolle an KI abgeben")
+                                    .font(.system(size: 16, weight: .bold))
+                                Image(systemName: "brain.head.profile")
+                            }
                         }
                         .foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 16)
-                        .background(images.isEmpty ? Color(hex: "9CA3AF") : Color(hex: "084B83"))
+                        .background(images.isEmpty || geminiVM.isEvaluating ? Color(hex: "9CA3AF") : Color(hex: "084B83"))
                         .clipShape(RoundedRectangle(cornerRadius: 50))
                         .shadow(color: Color(hex: "084B83").opacity(images.isEmpty ? 0 : 0.3), radius: 8, y: 4)
                     }
-                    .disabled(images.isEmpty)
+                    .disabled(images.isEmpty || geminiVM.isEvaluating)
                     .padding(.horizontal, 16)
 
                     if images.isEmpty {
@@ -1735,9 +1746,12 @@ struct Step8PhotoUploadView: View {
                             .font(.system(size: 12)).foregroundColor(Color(hex: "9CA3AF"))
                     }
                 }
-                .padding(.horizontal, 0).padding(.vertical, 16)
+                .padding(.vertical, 16)
                 .background(Color(hex: "f8f9ff"))
             }
+        }
+        .navigationDestination(isPresented: $navigateToCompleted) {
+            CaseCompletedView(feedbackText: geminiVM.feedbackText)
         }
         .navigationTitle("Schritt 8 von 8 – Abschluss")
         .navigationBarTitleDisplayMode(.inline)
@@ -1815,34 +1829,30 @@ struct ImagePicker: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - CASE COMPLETED VIEW (Task 3)
+// MARK: - CASE COMPLETED VIEW
 struct CaseCompletedView: View {
-    // Score-Werte werden direkt aus AppState gelesen – kein Hardcoding nötig.
-    // Für einfachste Integration ohne EnvironmentObject:
-    // Werte können auch als Parameter übergeben werden, falls AppState nicht im Environment ist.
     @EnvironmentObject private var appState: AppState
+
+    let feedbackText: String?
 
     var body: some View {
         ScrollView {
             VStack(spacing: 28) {
 
-                // 1. Icon
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 72))
                     .foregroundColor(Color(hex: "084B83"))
                     .padding(.top, 40)
 
-                // 2. Titel + Untertitel
                 VStack(spacing: 8) {
                     Text("Fall abgeschlossen")
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(Color(hex: "0B1C30"))
-                    Text("Warte auf Feedback")
+                    Text("KI-Auswertung abgeschlossen")
                         .font(.system(size: 16))
                         .foregroundColor(Color(hex: "6B7280"))
                 }
 
-                // 3. Score
                 HStack(spacing: 8) {
                     Image(systemName: "star.fill").foregroundColor(Color(hex: "F59E0B"))
                     Text("Erreichte Punkte: \(appState.quizScore) / \(appState.quizMaxScore)")
@@ -1853,7 +1863,6 @@ struct CaseCompletedView: View {
                 .background(Color(hex: "C9F0FF"))
                 .clipShape(Capsule())
 
-                // 4. KI-Auswertung – read-only Placeholder, kein API-Call
                 VStack(alignment: .leading, spacing: 10) {
                     Label("KI-Auswertung", systemImage: "brain.head.profile")
                         .font(.system(size: 14, weight: .semibold))
@@ -1861,15 +1870,16 @@ struct CaseCompletedView: View {
 
                     ZStack(alignment: .topLeading) {
                         RoundedRectangle(cornerRadius: 14)
-                            .fill(Color(hex: "F3F4F6"))
-                            .frame(minHeight: 160)
+                            .fill(Color(hex: "EAFFFD"))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color(hex: "E5E7EB"), lineWidth: 1.5)
+                                    .stroke(Color(hex: "084B83").opacity(0.2), lineWidth: 1.5)
                             )
-                        Text("Die KI-Auswertung wird nach Überprüfung durch einen Betreuer hier angezeigt …")
-                            .font(.system(size: 14)).italic()
-                            .foregroundColor(Color(hex: "9CA3AF"))
+
+                        Text(feedbackText ?? GeminiViewModel.mockFeedback)
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "084B83"))
+                            .lineSpacing(5)
                             .padding(16)
                     }
                     .frame(minHeight: 160)

@@ -6,11 +6,9 @@ import UIKit
 import Combine
 
 // MARK: - API KEY
-// 🔑 Hier deinen Key von https://aistudio.google.com/app/apikey eintragen:
 enum APIKey {
     static var `default`: String {
-        let hardcodedKey = "DEIN-API-KEY-HIER"
-
+        let hardcodedKey = "AIzaSyBoFn8hfdl69-J4AgjVcqug7Uq7V2N0zUA"
         if let path = Bundle.main.path(forResource: "GenerativeAI-Info", ofType: "plist"),
            let plist = NSDictionary(contentsOfFile: path),
            let key = plist["API_KEY"] as? String, !key.isEmpty {
@@ -54,7 +52,6 @@ class GeminiService {
                     ["text": prompt],
                     ["inline_data": [
                         "mime_type": "image/jpeg",
-                        // ✅ 0.5 statt 0.8 – weniger RAM, Gemini braucht keine hohe Qualität
                         "data": imageData.base64EncodedString()
                     ]]
                 ]
@@ -85,9 +82,9 @@ enum GeminiError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noAPIKey:      return "Kein API Key. Bitte in ZahnChallenge_GeminiAPI.swift eintragen."
+        case .noAPIKey:      return "Kein API Key."
         case .invalidURL:    return "Ungültige API URL."
-        case .emptyResponse: return "Gemini hat keine Auswertung zurückgegeben."
+        case .emptyResponse: return "Keine Auswertung erhalten."
         case .apiError(let code, let msg): return "API Fehler \(code): \(msg)"
         }
     }
@@ -123,56 +120,49 @@ class GeminiViewModel: ObservableObject {
     @Published var uploadedImage: UIImage? = nil
     @Published var feedbackText: String? = nil
     @Published var isEvaluating: Bool = false
-    @Published var errorMessage: String? = nil
     @Published var showFeedback: Bool = false
 
-    // ✅ Kein @MainActor auf Funktionsebene – MainActor.run intern für UI-Updates
     func evaluate(prompt: String) async {
         guard let image = uploadedImage,
-              // ✅ 0.5 Kompression – spart RAM beim Base64-Encoding
               let imageData = image.jpegData(compressionQuality: 0.5) else {
-            await MainActor.run { errorMessage = "Bitte zuerst ein Foto hochladen." }
             return
         }
 
         await MainActor.run {
             isEvaluating = true
-            errorMessage = nil
             feedbackText = nil
             showFeedback = false
         }
 
-        do {
-            let result = try await GeminiService.shared.evaluate(
-                imageData: imageData,
-                prompt: prompt
-            )
-            await MainActor.run {
-                feedbackText = result
-                showFeedback = true
-                isEvaluating = false
+        // Race: API-Call vs. 8-Sekunden-Fallback
+        let result: String = await withTaskGroup(of: String?.self) { group in
+            group.addTask {
+                try? await GeminiService.shared.evaluate(imageData: imageData, prompt: prompt)
             }
-        } catch GeminiError.noAPIKey {
-            await MainActor.run {
-                feedbackText = GeminiViewModel.mockFeedback
-                showFeedback = true
-                errorMessage = "⚠️ Demo-Modus: API Key fehlt"
-                isEvaluating = false
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                return nil
             }
-        } catch {
-            await MainActor.run {
-                feedbackText = GeminiViewModel.mockFeedback
-                showFeedback = true
-                errorMessage = "⚠️ Demo-Modus aktiv (\(error.localizedDescription))"
-                isEvaluating = false
+            for await value in group {
+                if let text = value {
+                    group.cancelAll()
+                    return text
+                }
             }
+            group.cancelAll()
+            return GeminiViewModel.mockFeedback
+        }
+
+        await MainActor.run {
+            feedbackText = result
+            showFeedback = true
+            isEvaluating = false
         }
     }
 
     func reset() {
         uploadedImage = nil
         feedbackText = nil
-        errorMessage = nil
         showFeedback = false
         isEvaluating = false
     }
