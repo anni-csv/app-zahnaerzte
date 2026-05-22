@@ -2,26 +2,23 @@
 //  ZahnChallenge_3D_Frontend.swift
 //  Hackathon_Zahnmed_Challenge
 //
-//  3D-Modell-Viewer: Übersicht + Detailansicht + AR
-//  Wird von ContentView (Startseite) aus aufgerufen via NavigationLink
+//  3D-Modell-Viewer: Übersicht + Detailansicht
+//  Verwendet SceneKit (kein ARKit nötig, läuft auf allen Geräten)
 //
 
 import SwiftUI
-import RealityKit
+import SceneKit
 import QuickLook
 
 // ─────────────────────────────────────────────
 // MARK: - BUTTON auf der Startseite
-// Diesen Block in ContentView einfügen,
-// direkt nach HeroBannerView() und vor CasesSectionView(...)
+// In ZahnChallenge_Frontend.swift direkt nach HeroBannerView() einfügen:
+//
+//   NavigationLink(destination: ModelOverviewView()) {
+//       Modell3DButtonView()
+//   }
+//   .padding(.horizontal, 16)
 // ─────────────────────────────────────────────
-
-/*
- NavigationLink(destination: ModelOverviewView()) {
-     Modell3DButtonView()
- }
- .padding(.horizontal, 16)
- */
 
 struct Modell3DButtonView: View {
     var body: some View {
@@ -52,7 +49,7 @@ struct Modell3DButtonView: View {
 }
 
 // ─────────────────────────────────────────────
-// MARK: - ÜBERSICHTSSEITE (3 Modelle)
+// MARK: - ÜBERSICHTSSEITE
 // ─────────────────────────────────────────────
 
 struct ModelOverviewView: View {
@@ -77,6 +74,8 @@ struct ModelOverviewView: View {
                    farbe: "1A7A4A",
                    icon: "checkmark.circle.fill")
     ]
+
+    @Environment(\.dismiss) var dismiss
 
     var body: some View {
         ScrollView {
@@ -150,12 +149,13 @@ struct ModelOverviewView: View {
             .padding(.top, 8)
         }
         .background(Color(hex: "F9FAFB"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("3D Modelle")
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 
 // ─────────────────────────────────────────────
-// MARK: - MODELL-KARTE (eine Zeile in der Liste)
+// MARK: - MODELL-KARTE
 // ─────────────────────────────────────────────
 
 struct ModellKarteView: View {
@@ -201,12 +201,18 @@ struct ModellKarteView: View {
 }
 
 // ─────────────────────────────────────────────
-// MARK: - DETAIL-ANSICHT (3D Viewer + AR)
+// MARK: - DETAIL-ANSICHT
 // ─────────────────────────────────────────────
 
 struct ModelDetailView: View {
     let modell: ZahnModell
     @State private var showQuickLook = false
+    @State private var modelLoaded = false
+    @State private var modelError = false
+
+    var usdzURL: URL? {
+        Bundle.main.url(forResource: modell.dateiname, withExtension: "usdz")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -214,18 +220,33 @@ struct ModelDetailView: View {
             // 3D Viewer
             ZStack {
                 Color(hex: "F0F4F8")
-                if let modelURL = Bundle.main.url(forResource: modell.dateiname, withExtension: "usdz") {
-                    Model3DViewer(url: modelURL)
+
+                if let url = usdzURL {
+                    SceneKitView(url: url, onLoaded: {
+                        modelLoaded = true
+                    }, onError: {
+                        modelError = true
+                    })
+                    if !modelLoaded && !modelError {
+                        VStack(spacing: 10) {
+                            ProgressView()
+                                .scaleEffect(1.3)
+                            Text("Modell wird geladen…")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color(hex: "6B7280"))
+                        }
+                    }
                 } else {
+                    // Datei nicht gefunden
                     VStack(spacing: 12) {
-                        Image(systemName: "cube.transparent")
-                            .font(.system(size: 60))
-                            .foregroundColor(Color(hex: "084B83").opacity(0.4))
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color(hex: "F59E0B"))
                         Text("Modell nicht gefunden")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color(hex: "6B7280"))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(Color(hex: "0B1C30"))
                         Text("\(modell.dateiname).usdz")
-                            .font(.system(size: 11, weight: .mono))
+                            .font(.system(size: 12))
                             .foregroundColor(Color(hex: "9CA3AF"))
                     }
                 }
@@ -276,23 +297,25 @@ struct ModelDetailView: View {
                     .background(Color(hex: modell.farbe).opacity(0.07))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                    // AR-Button
-                    Button(action: { showQuickLook = true }) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "arkit")
-                                .font(.system(size: 16))
-                            Text("In AR ansehen (iPhone)")
-                                .font(.system(size: 15, weight: .semibold))
+                    // AR-Button — nur anzeigen wenn Datei vorhanden
+                    if usdzURL != nil {
+                        Button(action: { showQuickLook = true }) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "arkit")
+                                    .font(.system(size: 16))
+                                Text("In AR ansehen (iPhone)")
+                                    .font(.system(size: 15, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color(hex: "084B83"))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color(hex: "084B83"))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-                    .sheet(isPresented: $showQuickLook) {
-                        if let url = Bundle.main.url(forResource: modell.dateiname, withExtension: "usdz") {
-                            QuickLookView(url: url)
+                        .sheet(isPresented: $showQuickLook) {
+                            if let url = usdzURL {
+                                QuickLookView(url: url)
+                            }
                         }
                     }
                 }
@@ -302,41 +325,68 @@ struct ModelDetailView: View {
         .background(Color(hex: "F9FAFB"))
         .navigationTitle(modell.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(false)
     }
 }
 
 // ─────────────────────────────────────────────
-// MARK: - REALITYKIT VIEWER (UIViewRepresentable)
+// MARK: - SCENEKIT VIEWER (kein ARKit nötig!)
 // ─────────────────────────────────────────────
 
-struct Model3DViewer: UIViewRepresentable {
+struct SceneKitView: UIViewRepresentable {
     let url: URL
+    var onLoaded: (() -> Void)?
+    var onError: (() -> Void)?
 
-    func makeUIView(context: Context) -> ARView {
-        let arView = ARView(frame: .zero)
-        arView.environment.background = .color(.init(red: 0.94, green: 0.96, blue: 0.97, alpha: 1))
+    func makeUIView(context: Context) -> SCNView {
+        let scnView = SCNView(frame: .zero)
+        scnView.backgroundColor = UIColor(red: 0.94, green: 0.96, blue: 0.97, alpha: 1)
+        scnView.allowsCameraControl = true
+        scnView.autoenablesDefaultLighting = true
+        scnView.antialiasingMode = .multisampling4X
+        scnView.defaultCameraController.interactionMode = .orbitTurntable
 
-        Task {
+        DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let entity = try await ModelEntity(contentsOf: url)
-                let anchor = AnchorEntity(world: .zero)
-                anchor.addChild(entity)
-                arView.scene.addAnchor(entity)
+                let scene = try SCNScene(url: url, options: [
+                    SCNSceneSource.LoadingOption.convertToYUp: true,
+                    SCNSceneSource.LoadingOption.convertUnitsToMeters: 1.0
+                ])
 
-                // Automatisch skalieren und zentrieren
-                let bounds = entity.visualBounds(relativeTo: nil)
-                let maxDim = max(bounds.extents.x, bounds.extents.y, bounds.extents.z)
-                let scale: Float = maxDim > 0 ? 0.15 / maxDim : 1.0
-                entity.scale = [scale, scale, scale]
-                entity.position = [0, 0, -0.3]
+                // Kamera-Node hinzufügen
+                let cameraNode = SCNNode()
+                cameraNode.camera = SCNCamera()
+                cameraNode.position = SCNVector3(0, 0, 0.3)
+                scene.rootNode.addChildNode(cameraNode)
+
+                // Licht hinzufügen
+                let lightNode = SCNNode()
+                lightNode.light = SCNLight()
+                lightNode.light?.type = .omni
+                lightNode.position = SCNVector3(0, 0.3, 0.3)
+                scene.rootNode.addChildNode(lightNode)
+
+                let ambientNode = SCNNode()
+                ambientNode.light = SCNLight()
+                ambientNode.light?.type = .ambient
+                ambientNode.light?.color = UIColor(white: 0.7, alpha: 1.0)
+                scene.rootNode.addChildNode(ambientNode)
+
+                DispatchQueue.main.async {
+                    scnView.scene = scene
+                    onLoaded?()
+                }
             } catch {
-                print("⚠️ Fehler beim Laden von \(url.lastPathComponent): \(error)")
+                print("⚠️ SceneKit Fehler: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    onError?()
+                }
             }
         }
-        return arView
+        return scnView
     }
 
-    func updateUIView(_ uiView: ARView, context: Context) {}
+    func updateUIView(_ uiView: SCNView, context: Context) {}
 }
 
 // ─────────────────────────────────────────────
@@ -374,9 +424,9 @@ struct ZahnModell: Identifiable {
     let id: Int
     let name: String
     let beschreibung: String
-    let dateiname: String   // ohne .usdz
-    let farbe: String       // Hex-Code
-    let icon: String        // SF Symbol
+    let dateiname: String
+    let farbe: String
+    let icon: String
 
     var lernhinweis: String {
         switch id {

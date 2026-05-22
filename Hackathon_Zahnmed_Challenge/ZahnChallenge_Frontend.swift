@@ -68,6 +68,10 @@ struct ContentView: View {
                         SearchBarView()
                         CategoryPillsView(state: state)
                         HeroBannerView()
+                        NavigationLink(destination: ModelOverviewView()){
+                            Modell3DButtonView()
+                        }
+                        .padding(.horizontal, 16)
                         CasesSectionView(state: state)
                         Spacer(minLength: 120)
                     }
