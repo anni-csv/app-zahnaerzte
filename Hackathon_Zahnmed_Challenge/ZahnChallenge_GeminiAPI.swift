@@ -9,7 +9,7 @@ import Combine
 // 🔑 Hier deinen Key von https://aistudio.google.com/app/apikey eintragen:
 enum APIKey {
     static var `default`: String {
-        let hardcodedKey = "AIzaSyBoFn8hfdl69-J4AgjVcqug7Uq7V2N0zUA"
+        let hardcodedKey = "DEIN-API-KEY-HIER"
 
         if let path = Bundle.main.path(forResource: "GenerativeAI-Info", ofType: "plist"),
            let plist = NSDictionary(contentsOfFile: path),
