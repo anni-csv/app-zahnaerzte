@@ -8,7 +8,7 @@ import Combine
 // MARK: - API KEY
 enum APIKey {
     static var `default`: String {
-        let hardcodedKey = "AIzaSyBoFn8hfdl69-J4AgjVcqug7Uq7V2N0zUA"
+        let hardcodedKey = "AIzaSyC6RZUUbElReb6Mto2gVn0uY3fwxcU84A8"
         if let path = Bundle.main.path(forResource: "GenerativeAI-Info", ofType: "plist"),
            let plist = NSDictionary(contentsOfFile: path),
            let key = plist["API_KEY"] as? String, !key.isEmpty {
@@ -30,13 +30,18 @@ struct GeminiResponse: Codable {
 class GeminiService {
     static let shared = GeminiService()
     private init() {}
-    private let model = "gemini-1.5-flash"
+    private let model = "gemini-2.0-flash"
 
     func evaluate(imageData: Data, prompt: String) async throws -> String {
         let key = APIKey.default
+        print("🔑 API Key (ersten 10 Zeichen): \(String(key.prefix(10)))...")
+        print("📡 Starte Gemini API-Aufruf...")
+
         guard !key.isEmpty, key != "DEIN-API-KEY-HIER" else {
+            print("❌ Kein API Key gefunden!")
             throw GeminiError.noAPIKey
         }
+
         guard let url = URL(string:
             "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(key)"
         ) else { throw GeminiError.invalidURL }
@@ -60,17 +65,25 @@ class GeminiService {
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        print("📤 Sende Request an: \(url.absoluteString.prefix(60))...")
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            let msg = String(data: data, encoding: .utf8) ?? "Unbekannter API-Fehler"
-            throw GeminiError.apiError(http.statusCode, msg)
+        if let http = response as? HTTPURLResponse {
+            print("📥 HTTP Status: \(http.statusCode)")
+            if http.statusCode != 200 {
+                let msg = String(data: data, encoding: .utf8) ?? "Unbekannter API-Fehler"
+                print("❌ API Fehler: \(msg)")
+                throw GeminiError.apiError(http.statusCode, msg)
+            }
         }
 
         let decoded = try JSONDecoder().decode(GeminiResponse.self, from: data)
         guard let text = decoded.candidates?.first?.content.parts.first?.text else {
+            print("⚠️ Antwort leer – Candidates: \(decoded.candidates?.count ?? 0)")
             throw GeminiError.emptyResponse
         }
+        print("✅ Gemini hat geantwortet (\(text.count) Zeichen)")
         return text
     }
 }
@@ -88,31 +101,6 @@ enum GeminiError: Error, LocalizedError {
         case .apiError(let code, let msg): return "API Fehler \(code): \(msg)"
         }
     }
-}
-
-// MARK: - PROMPTS
-enum GeminiPrompts {
-    static let fall1_upload = """
-    Du bist ein erfahrener Zahnarzt-Tutor an der Universität Regensburg.
-    Ein Zahnmedizinstudierender hat eine Übungsbehandlung am 3D-Modell durchgeführt
-    und ein Foto hochgeladen.
-
-    Aufgabe des Studierenden war:
-    - Repositionierung des avulsierten Zahns 11 in die Alveole
-    - Anlage eines Titan-Trauma-Splints
-
-    Bewerte das Foto nach genau diesen 3 Punkten:
-    1. ✅ Position Zahn 11 – korrekt reponiert? (Höhe, Achse im Vergleich zu Nachbarzähnen)
-    2. 🔧 Splint-Anlage – korrekt? (Ausdehnung, Fixierung, Okklusionsfreiheit)
-    3. 💡 Wichtigster Verbesserungshinweis für den Studierenden
-
-    Regeln:
-    - Antworte auf Deutsch
-    - Maximal 130 Wörter
-    - Ermutigender, lehrender Ton – wie ein guter Tutor
-    - Beginne direkt mit Punkt 1, kein einleitender Satz
-    - Hinweis: Dies ist ein anonymisiertes 3D-Lehrmodell, keine echten Patientendaten
-    """
 }
 
 // MARK: - GEMINI VIEW MODEL

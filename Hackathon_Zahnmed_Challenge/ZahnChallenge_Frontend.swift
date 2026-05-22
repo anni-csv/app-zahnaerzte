@@ -1588,10 +1588,8 @@ struct Step7MCQView: View {
                 }
                 .padding(.top, 20)
             }
-            VStack(spacing: 0) {
-                Divider()
-                Step7NavBar(selected: $navTab).background(Color(hex: "f8f9ff"))
-            }
+            
+            
         }
         .navigationTitle("Schritt 7 von 8")
         .navigationBarTitleDisplayMode(.inline)
