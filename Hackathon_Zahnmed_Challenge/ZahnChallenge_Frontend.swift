@@ -2,13 +2,20 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Combine
 
+
+class NavState: ObservableObject {
+    @Published var rootID = UUID()
+    func goHome() { rootID = UUID() }
+}
+
 // Note: Color extension and AppState are defined in ZahnChallenge_Backend.swift
 
 // MARK: - PERSISTENT BOTTOM BAR
 struct PersistentBottomBar: View {
+    @EnvironmentObject var navState: NavState
     var body: some View {
         HStack(spacing: 0) {
-            PersistentBarItem(icon: "house.fill",        label: "Startseite", active: false, action: {})
+            PersistentBarItem(icon: "house.fill",        label: "Startseite", active: false, action: { navState.goHome() })
             PersistentBarItem(icon: "trophy.fill",       label: "Ranking",    active: false, action: {})
             PersistentBarItem(icon: "bubble.left.fill",  label: "Chat",       active: false, action: {})
         }
@@ -50,6 +57,7 @@ extension View {
 // MARK: - ROOT VIEW
 struct ContentView: View {
     @StateObject private var state = AppState()
+    @StateObject private var navState = NavState()
 
     var body: some View {
         NavigationStack {
@@ -74,6 +82,8 @@ struct ContentView: View {
                     .presentationCornerRadius(24)
             }
         }
+        .environmentObject(navState)
+        .id(navState.rootID)
     }
 }
 
@@ -427,6 +437,8 @@ struct AvatarSheetView: View {
 
 // MARK: - CASE DETAIL
 struct CaseDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     let patientCase: PatientCase
 
     var body: some View {
@@ -746,6 +758,8 @@ private struct Step7NavBar: View {
 
 // MARK: - STEP 1: FREITEXT
 struct Step1FreeTextView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @State private var inputText = ""
 
     var body: some View {
@@ -816,6 +830,8 @@ struct Step1FreeTextView: View {
 
 // MARK: - STEP 2: MCQ
 struct Step2MCQView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @State private var selectedAnswer: Int? = nil
     @State private var submitted = false
     let options = ["MKG-Chirurgie & Neurologie", "Urologie", "Kardiologie", "Dermatologie"]
@@ -924,6 +940,8 @@ struct SortItem: Identifiable {
 }
 
 struct Step3SortingView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @State private var items: [SortItem] = [
         SortItem(id: UUID(), label: "Zahnrettungsbox (Dentosafe)", correctRank: 1),
         SortItem(id: UUID(), label: "Sterile Kochsalzlösung",     correctRank: 2),
@@ -1108,6 +1126,8 @@ struct SortDropDelegate: DropDelegate {
 
 // MARK: - STEP 4: Multiple Choice – Sofortmaßnahmen
 struct Step4DiagnosisView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @State private var selectedImages: Set<Int> = []
     @State private var submitted = false
     let imageOptions = [
@@ -1226,6 +1246,8 @@ struct Step4DiagnosisView: View {
 
 // MARK: - STEP 5: Diagnose-Zuordnung
 struct Step5DiagnosisView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @State private var selections: [String: String] = [:]
     @State private var submitted = false
     let teeth = ["11", "12", "21", "22"]
@@ -1390,6 +1412,8 @@ struct Step6DropDelegate: DropDelegate {
 }
 
 struct Step6SortingTherapyView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @State private var items: [Step6SortItem] = {
         [
             Step6SortItem(id: UUID(), label: "Kurzes Einlegen in Dentosafe-Box",  correctRank: 1),
@@ -1512,6 +1536,8 @@ private struct SortCardView: View {
 
 // MARK: - STEP 7: MCQ
 struct Step7MCQView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @State private var selected: Int? = nil
     @State private var submitted = false
     @State private var navTab: Step7NavBar.Tab = .cases
@@ -1630,6 +1656,8 @@ private struct MCQOptionRow: View {
 
 // MARK: - STEP 8: Foto-Upload
 struct Step8PhotoUploadView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @State private var images: [UIImage] = []
     @State private var showPicker = false
     @State private var isPulsing = false
@@ -1831,6 +1859,8 @@ struct ImagePicker: UIViewControllerRepresentable {
 
 // MARK: - CASE COMPLETED VIEW
 struct CaseCompletedView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var navState: NavState
     @EnvironmentObject private var appState: AppState
     @ObservedObject var geminiVM: GeminiViewModel
 
