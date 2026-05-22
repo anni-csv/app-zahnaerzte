@@ -11,7 +11,7 @@ import SwiftUI
 struct Hackathon_Zahnmed_ChallengeApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SplashScreenView()
         }
     }
 }
