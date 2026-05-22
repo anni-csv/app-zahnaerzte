@@ -1751,7 +1751,7 @@ struct Step8PhotoUploadView: View {
             }
         }
         .navigationDestination(isPresented: $navigateToCompleted) {
-            CaseCompletedView(feedbackText: geminiVM.feedbackText)
+            CaseCompletedView(geminiVM: geminiVM)
         }
         .navigationTitle("Schritt 8 von 8 – Abschluss")
         .navigationBarTitleDisplayMode(.inline)
@@ -1832,8 +1832,7 @@ struct ImagePicker: UIViewControllerRepresentable {
 // MARK: - CASE COMPLETED VIEW
 struct CaseCompletedView: View {
     @EnvironmentObject private var appState: AppState
-
-    let feedbackText: String?
+    @ObservedObject var geminiVM: GeminiViewModel
 
     var body: some View {
         ScrollView {
@@ -1853,12 +1852,7 @@ struct CaseCompletedView: View {
                         .foregroundColor(Color(hex: "6B7280"))
                 }
 
-                HStack(spacing: 8) {
-                    Image(systemName: "star.fill").foregroundColor(Color(hex: "F59E0B"))
-                    Text("Erreichte Punkte: \(appState.quizScore) / \(appState.quizMaxScore)")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Color(hex: "084B83"))
-                }
+               
                 .padding(.horizontal, 24).padding(.vertical, 14)
                 .background(Color(hex: "C9F0FF"))
                 .clipShape(Capsule())
@@ -1876,7 +1870,7 @@ struct CaseCompletedView: View {
                                     .stroke(Color(hex: "084B83").opacity(0.2), lineWidth: 1.5)
                             )
 
-                        Text(feedbackText ?? GeminiViewModel.mockFeedback)
+                        Text(geminiVM.feedbackText ?? GeminiViewModel.mockFeedback)
                             .font(.system(size: 14))
                             .foregroundColor(Color(hex: "084B83"))
                             .lineSpacing(5)
@@ -1898,3 +1892,4 @@ struct CaseCompletedView: View {
         .withPersistentBottomBar()
     }
 }
+
