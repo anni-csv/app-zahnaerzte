@@ -1,118 +1,105 @@
-import SwiftUI
+//  ZahnChallenge_Backend.swift
+//  Hackathon_Zahnmed_Challenge
+//
+//  Zuständigkeit: App-State, Schritt-Navigation, Fall-Daten
+
+import Foundation
 import Combine
-import UniformTypeIdentifiers
+import SwiftUI
 
-// MARK: - DATA MODEL
-struct PatientCase: Identifiable {
-    let id = UUID()
-    let sfSymbol: String
-    let category: String
+// MARK: - SCHRITT-MODELL
+struct ChallengeStep: Identifiable {
+    let id: Int
     let title: String
-    let difficulty: Int
-    let difficultyLabel: String
-    let gradientStart: Color
-    let gradientEnd: Color
-    let starColor: Color
-    let badge: String?
-    let badgeBG: Color?
-    let badgeText: Color?
-    let progress: Double
-    let totalSteps: Int
-}
-
-// MARK: - APP STATE
-class AppState: ObservableObject {
-    @Published var selectedTab: Int = 0
-    @Published var selectedCategory: String = "Notfallbehandlung"
-    @Published var showAvatarSheet: Bool = false
-    @Published var userScore: Int = UserDefaults.standard.integer(forKey: "userScore")
-    @Published var fall1Completed: Bool = UserDefaults.standard.bool(forKey: "fall1_completed")
-    @Published var fall2Completed: Bool = UserDefaults.standard.bool(forKey: "fall2_completed")
-
-    // Quiz-Scoring (wird von Quiz-Steps befüllt, von CaseCompletedView gelesen)
-    @Published var quizScore: Int = 0
-    let quizMaxScore: Int = 58
-
-    let categories = ["Notfallbehandlung", "Endodontie", "Parodontologie", "Kieferchirurgie"]
-
-    let cases: [PatientCase] = [
-        PatientCase(
-            sfSymbol: "cross.case.fill",
-            category: "NOTFALLBEHANDLUNG",
-            title: "Volksfest-Unfall",
-            difficulty: 2,
-            difficultyLabel: "Mittel",
-            gradientStart: Color(hex: "FFD6A5"),
-            gradientEnd: Color(hex: "FFEFCF"),
-            starColor: Color(hex: "F59E0B"),
-            badge: nil, badgeBG: nil, badgeText: nil,
-            progress: 0.0, totalSteps: 8
-        ),
-        PatientCase(
-            sfSymbol: "waveform.path.ecg",
-            category: "ENDODONTIE",
-            title: "Schmerzen in der Nacht",
-            difficulty: 3,
-            difficultyLabel: "Schwer",
-            gradientStart: Color(hex: "C9F0FF"),
-            gradientEnd: Color(hex: "A5D8FF"),
-            starColor: Color(hex: "EF4444"),
-            badge: "In Bearbeitung",
-            badgeBG: Color(hex: "FFEDD5"),
-            badgeText: Color(hex: "C2410C"),
-            progress: 0.3, totalSteps: 8
-        ),
-        PatientCase(
-            sfSymbol: "magnifyingglass.circle.fill",
-            category: "PARODONTOLOGIE",
-            title: "Parodontitis-Erstuntersuchung",
-            difficulty: 1,
-            difficultyLabel: "Leicht",
-            gradientStart: Color(hex: "B5EAD7"),
-            gradientEnd: Color(hex: "CAFFBF"),
-            starColor: Color(hex: "10B981"),
-            badge: "Neu",
-            badgeBG: Color(hex: "DBEAFE"),
-            badgeText: Color(hex: "1D4ED8"),
-            progress: 0.0, totalSteps: 8
-        )
-    ]
-
-    func addPoints(_ points: Int) {
-        quizScore += points
-        userScore += points
-        UserDefaults.standard.set(userScore, forKey: "userScore")
-    }
-
-    func markCompleted(caseIndex: Int) {
-        if caseIndex == 0 {
-            fall1Completed = true
-            UserDefaults.standard.set(true, forKey: "fall1_completed")
-        }
-        if caseIndex == 1 {
-            fall2Completed = true
-            UserDefaults.standard.set(true, forKey: "fall2_completed")
-        }
-    }
-
-    func resetQuizScore() {
-        quizScore = 0
+    let description: String
+    let isUploadStep: Bool   // true = Schritt 8 (Foto-Upload + Gemini-Auswertung)
+    
+    init(id: Int, title: String, description: String, isUploadStep: Bool = false) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.isUploadStep = isUploadStep
     }
 }
 
-// MARK: - COLOR EXTENSION
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default: (a, r, g, b) = (1, 1, 1, 0)
-        }
-        self.init(.sRGB, red: Double(r)/255, green: Double(g)/255, blue: Double(b)/255, opacity: Double(a)/255)
+// MARK: - FALL-MODELL
+struct DentalCase: Identifiable {
+    let id: Int
+    let title: String
+    let subtitle: String
+    let steps: [ChallengeStep]
+    let geminiPrompt: String
+}
+
+// MARK: - APP VIEW MODEL
+class AppViewModel: ObservableObject {
+    
+    // Navigation
+    @Published var selectedCase: DentalCase? = nil
+    @Published var currentStepIndex: Int = 0
+    @Published var showCaseSelection: Bool = true
+    
+    // Gemini-Integration: wird an UploadEvaluationView weitergereicht
+    let geminiViewModel = GeminiViewModel()
+    
+    // MARK: - Fälle-Daten
+    // Fall 1: Avulsion Zahn 11
+    let fall1 = DentalCase(
+        id: 1,
+        title: "Fall 1: Avulsion Zahn 11",
+        subtitle: "Repositionierung & Titan-Trauma-Splint",
+        steps: [
+            ChallengeStep(id: 1, title: "Anamnese", description: "Patient, 24 J., Fahrradsturz vor 30 min. Zahn 11 avulsiert, in Milch aufbewahrt. Keine Allergien, keine Medikamente."),
+            ChallengeStep(id: 2, title: "Befund", description: "Leere Alveole regio 11, Randbezirke intakt. Kein Knochendefekt tastbar. Avulsierter Zahn: Wurzel vollständig, Schmelzfraktur inzisal."),
+            ChallengeStep(id: 3, title: "Diagnose", description: "Avulsion 11. Extraalveoläre Lagerungszeit: 30 min (feuchtes Medium). Prognose gut bei sofortiger Replantation."),
+            ChallengeStep(id: 4, title: "Aufklärung", description: "Patient über Prognose, Vorgehen, Risiken (Ankylose, Resorption) und Nachsorge aufgeklärt. Einverständnis eingeholt."),
+            ChallengeStep(id: 5, title: "Anästhesie", description: "Leitungsanästhesie N. alveolaris superior anterior + bukkale Infiltration. Warten auf Wirkungseintritt."),
+            ChallengeStep(id: 6, title: "Alveole vorbereiten", description: "Alveole mit steriler NaCl-Lösung spülen. Koagulum vorsichtig entfernen. Zahn in NaCl-Lösung lagern bis zur Replantation."),
+            ChallengeStep(id: 7, title: "Replantation", description: "Zahn 11 unter leichtem Druck in die Alveole reponieren. Achse und Höhe zur Kontrolle mit Nachbarzähnen vergleichen. Okklusionskontrolle."),
+            ChallengeStep(id: 8, title: "Foto & KI-Auswertung", description: "Lade ein Foto deiner Arbeit hoch. Die KI bewertet Position und Splint-Anlage.", isUploadStep: true),
+            ChallengeStep(id: 9, title: "Nachsorge", description: "Schiene für 2 Wochen belassen. Antibiotika (Amoxicillin 500mg 3x/Tag, 7 Tage). Weiches Essen. Recall in 1 Woche."),
+            ChallengeStep(id: 10, title: "Abschluss", description: "Dokumentation vollständig. Fall erfolgreich abgeschlossen! Weiterer Recall: 1, 3, 6 Monate + jährlich.")
+        ],
+        geminiPrompt: GeminiPrompts.fall1_upload
+    )
+    
+    // MARK: - Navigation Methoden
+    func selectCase(_ dentalCase: DentalCase) {
+        selectedCase = dentalCase
+        currentStepIndex = 0
+        showCaseSelection = false
+        geminiViewModel.reset()
+    }
+    
+    func nextStep() {
+        guard let c = selectedCase, currentStepIndex < c.steps.count - 1 else { return }
+        currentStepIndex += 1
+    }
+    
+    func previousStep() {
+        guard currentStepIndex > 0 else { return }
+        currentStepIndex -= 1
+    }
+    
+    func returnToSelection() {
+        showCaseSelection = true
+        selectedCase = nil
+        currentStepIndex = 0
+        geminiViewModel.reset()
+    }
+    
+    var currentStep: ChallengeStep? {
+        guard let c = selectedCase, currentStepIndex < c.steps.count else { return nil }
+        return c.steps[currentStepIndex]
+    }
+    
+    var isLastStep: Bool {
+        guard let c = selectedCase else { return false }
+        return currentStepIndex == c.steps.count - 1
+    }
+    
+    var progressValue: Double {
+        guard let c = selectedCase, c.steps.count > 1 else { return 0 }
+        return Double(currentStepIndex) / Double(c.steps.count - 1)
     }
 }
