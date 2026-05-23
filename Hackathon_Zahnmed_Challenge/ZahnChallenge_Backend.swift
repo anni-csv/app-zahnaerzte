@@ -1,7 +1,7 @@
 import SwiftUI
 import Combine
 import UniformTypeIdentifiers
-
+import WidgetKit  // ← NEU hinzufügen oben!
 // MARK: - DATA MODEL
 struct PatientCase: Identifiable {
     let id = UUID()
